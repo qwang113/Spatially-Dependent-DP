@@ -3,6 +3,8 @@ library(MASS)
 library(ggplot2)
 library(sp)
 library(mvtnorm)
+load("anisotropy.RData")
+
 sim_size <- 50
 long_grid <- lat_grid <- seq(from = -2, to = 2, length.out = sim_size)
 grid <- expand.grid(long = long_grid, lat = lat_grid)
@@ -25,14 +27,14 @@ Sigma <- sigma2 * exp(-mahal_sq)
 
 set.seed(123)
 nobs <- 50
-z <- mvrnorm(n = nobs, mu = rep(0, n), Sigma = Sigma)
+z <- mvrnorm(n = nobs, mu = rep(0, n), Sigma = Sigma) + rnorm(nobs*nrow(grid), sd = 0.1)
 
-# 
-ggplot(grid, aes(x = long, y = lat, fill = z[1,])) +
-  geom_raster() +
+ggplot() +
+  geom_tile(aes(x = coords[,1], y = coords[,2], fill = z[2,])) +
   scale_fill_viridis_c() +
-  coord_fixed() +
-  labs(title = "Anisotropic Gaussian Process Simulation")
+  theme_minimal() + 
+  labs(title = "Heatmap based on Longitude and Latitude",
+       x = "Longitude", y = "Latitude", fill = "Value")
 
 
 get_info <- function(mat) {
@@ -52,12 +54,14 @@ get_info <- function(mat) {
   ))
 }
 
+
+
 train_grids <- sample(1:ncol(z), 100)
 
 
 # Hyperparameters
-anu <- 1
-bnu <- 1
+anu <- 2
+bnu <- 0.1
 abeta <- mean(z)
 bbeta <- var(as.vector(z))/3
 asig = atau = 2
@@ -160,7 +164,6 @@ while (TRUE) {
   }
   
 }
-library(ggplot2)
 
 plot_pred <- function(idx){
   
@@ -198,5 +201,104 @@ plot_pred <- function(idx){
     geom_line(aes(x = real_density_df$x, y = real_density_df$value), color = "red", linewidth = 0.8) +
     theme_minimal() +
     labs(x = paste("Theta",train_grids[idx]), y = "Density") +
-    theme(legend.title = element_blank())  # 可选：去除图例标题
+    theme(legend.title = element_blank()) 
 }
+plot_pred(2)
+
+
+permuted_paired_dists <- spDists(rbind(coords[train_grids,], coords[-train_grids,]))
+train_coords <- coords[train_grids,]
+pred_coords <- coords[-train_grids,]
+
+sim_selected <- 976:1000
+nsim <- length(sim_selected)
+preds <- matrix(NA, nrow = nsim, ncol = nrow(coords))
+
+save_id <- 0
+for (sim in sim_selected) {
+  save_id = save_id+1
+  print(sim)
+  curr_phi <- all_phi[sim]
+  curr_tau <- all_tau[sim]
+  curr_sig <- all_sig[sim]
+  curr_beta <- all_beta[sim]
+  curr_nu <- all_nu[sim]
+  # GP Covariance
+  full_cov <- curr_sig*exp(-curr_phi*permuted_paired_dists)
+  
+  sig11 <- full_cov[1:100, 1:100]
+  sig12 <- full_cov[1:100, -c(1:100)]
+  sig21 <- full_cov[-c(1:100), 1:100]
+  sig22 <- full_cov[-c(1:100), -c(1:100)]
+  curr_theta <- all_theta[sim,,]
+  theta_info <- get_info(curr_theta)
+  curr_reps <- matrix(NA, nrow = theta_info$n_unique, ncol = nrow(coords))
+  
+  for (reps in 1:ncol(theta_info$unique_rows)) {
+    print(paste(sim,reps,"out of", theta_info$n_unique))
+    curr_theta <- theta_info$unique_rows[,reps]
+    mu_pos <- curr_beta + sig21%*%solve(sig11)%*%(curr_theta)
+    sig_pos <- sig22 - sig21%*%solve(sig11)%*%sig12
+    # L <- chol(sig_pos)
+    # zt <- rnorm(length(mu_pos))
+    curr_reps[reps, ] <- c(curr_theta, rmvnorm(1, mean = mu_pos, sigma = sig_pos))
+  }
+  idx <- rmultinom(1,1,prob = c(curr_nu,theta_info$counts))
+  if(idx[1]==1){
+    L <- chol(full_cov)
+    zt <- rnorm(nrow(coords))
+    preds[save_id,] <- rmvnorm(1, mean = rep(curr_beta, nrow(coords)), sigma = full_cov)
+  }else{
+    preds[save_id,] <- curr_beta + curr_reps[which(idx == 1) - 1,]
+  }
+}
+
+coords_permu <- rbind(coords[train_grids,], coords[-train_grids,])
+pred_df <- data.frame(cbind(coords_permu, t(preds)))
+
+
+p1 <-
+  ggplot() +
+  geom_tile(aes(x = coords_permu[,1], y = coords_permu[,2], fill = apply(preds,2,mean))) +
+  scale_fill_viridis_c() +
+  theme_minimal() + 
+  labs(title = "Heatmap based on Longitude and Latitude",
+       x = "Longitude", y = "Latitude", fill = "Value")
+
+p2 <-
+  ggplot() +
+  geom_tile(aes(x = coords[,1], y = coords[,2], fill = apply(z,2,mean))) +
+  scale_fill_viridis_c() +
+  theme_minimal() + 
+  labs(title = "Heatmap based on Longitude and Latitude",
+       x = "Longitude", y = "Latitude", fill = "Value")
+
+cowplot::plot_grid(p1,p2)
+
+ggplot() +
+  geom_tile(aes(x = coords[,1], y = coords[,2], fill = z[1,])) +
+  scale_fill_viridis_c() +
+  theme_minimal() + 
+  labs(title = "Heatmap based on Longitude and Latitude",
+       x = "Longitude", y = "Latitude", fill = "Value")
+
+
+
+
+colnames(pred_df) <- c("Longitude", "Latitude", paste0("response_", 1:nrow(preds)))
+
+pred_df_long <- pred_df %>%
+  pivot_longer(cols = starts_with("response"), names_to = "Response", values_to = "Value")
+
+
+ggplot(pred_df_long, aes(x = Longitude, y = Latitude, fill = Value)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  facet_wrap(~ Response) + 
+  theme_void() + 
+  theme(legend.position = "", strip.text = element_blank()) +
+  labs(title = "",
+       x = "", y = "", fill = "")
+
+
+save(list = ls(), file = "anisotropy.RData")
