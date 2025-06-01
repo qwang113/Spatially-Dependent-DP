@@ -180,10 +180,9 @@ while (TRUE) {
 }
 
 plot_pred <- function(idx){
-  
   # Calculate the density of the first row of train_dat
-  real_density_vals <- density(train_dat[idx, ])$y
-  real_density_xvals <- density(train_dat[idx, ])$x
+  real_density_vals <- density(train_dat[,idx ])$y
+  real_density_xvals <- density(train_dat[,idx])$x
   
   # Create a data frame for the real density curve
   real_density_df <- data.frame(
@@ -201,8 +200,8 @@ plot_pred <- function(idx){
   # all_theta <- all_theta[500:1000,,]
   # Calculate the density for each row of all_theta and add it to the data frame
   for (i in 100:nrow(all_theta)) {
-    density_vals <- density(all_theta[i, idx, ])$y
-    x_vals <- density(all_theta[i, idx, ])$x
+    density_vals <- density(all_theta[i, ,idx ])$y
+    x_vals <- density(all_theta[i, ,idx ])$x
     
     all_theta_long <- rbind(all_theta_long, data.frame(value = density_vals, type = paste("Estimate ", i), x = x_vals))
   }
@@ -217,6 +216,35 @@ plot_pred <- function(idx){
     labs(x = paste("Theta",train_grids[idx]), y = "Density") +
     theme(legend.title = element_blank()) 
 }
+
+plot_pred_oo <- function(idx){
+  # Calculate the density of the first row of train_dat
+  ooidx <- (1:ncol(z))[-train_grids]
+  real_density_vals <- density(z[ ,ooidx[idx]])$y
+  real_density_xvals <- density(z[ ,ooidx[idx]])$x
+  
+  # Create a data frame for the real density curve
+  real_density_df <- data.frame(
+    value = real_density_vals,
+    type = "True",
+    x = real_density_xvals
+  )
+  
+  pred_density <- density(preds[,100+idx])$y
+  pred_density_x <- density(preds[,100+idx])$x
+  
+  all_theta_long <- data.frame(value = pred_density, type = "Pred",x = pred_density_x)
+  combined_df <- rbind(real_density_df, all_theta_long)
+  
+  ggplot() +
+    geom_line(aes(x = all_theta_long$x, y = all_theta_long$value, group = all_theta_long$type), color = "blue", alpha = 0.2) +
+    geom_line(aes(x = real_density_df$x, y = real_density_df$value), color = "red", linewidth = 0.8) +
+    theme_minimal() +
+    labs(x = paste("Theta",train_grids[idx]), y = "Density") +
+    theme(legend.title = element_blank()) 
+}
+
+plot_pred_oo(20000)
 
 
 plot_cov <- function(i,j) {
@@ -298,7 +326,7 @@ for (sim in sim_selected) {
 }
 
 coords_permu <- rbind(coords[train_grids,], coords[-train_grids,])
-pred_df <- data.frame(cbind(coords_permu, t(preds)))
+pred_df <- data.frame(cbind(coords_permu, t(preds[1:25,])))
 
 
 p1 <-
@@ -310,17 +338,9 @@ ggplot() +
        x = "Longitude", y = "Latitude", fill = "Value")
 p1
 
-ggplot() +
-  geom_tile(aes(x = coords[,1], y = coords[,2], fill = z[1,])) +
-  scale_fill_viridis_c() +
-  theme_minimal() + 
-  labs(title = "Heatmap based on Longitude and Latitude",
-       x = "Longitude", y = "Latitude", fill = "Value")
 
-
-
-
-colnames(pred_df) <- c("Longitude", "Latitude", paste0("response_", 1:nrow(preds)))
+# 
+colnames(pred_df) <- c("Longitude", "Latitude", paste0("response_", 1:nrow(preds[1:25,])))
 
 pred_df_long <- pred_df %>%
   pivot_longer(cols = starts_with("response"), names_to = "Response", values_to = "Value")
@@ -329,13 +349,15 @@ pred_df_long <- pred_df %>%
 ggplot(pred_df_long, aes(x = Longitude, y = Latitude, fill = Value)) +
   geom_tile() +
   scale_fill_viridis_c() +
-  facet_wrap(~ Response) + 
-  theme_void() + 
+  facet_wrap(~ Response) +
+  theme_void() +
   theme(legend.position = "", strip.text = element_blank()) +
   labs(title = "",
        x = "", y = "", fill = "")
-
-
-# save(list = ls(), file = "nonconstant_var.RData")
-
-  
+# 
+# 
+# 
+# 
+save(list = ls(), file = "nonconstant_var.RData")
+# 
+#   

@@ -29,12 +29,27 @@ set.seed(123)
 nobs <- 50
 z <- mvrnorm(n = nobs, mu = rep(0, n), Sigma = Sigma) + rnorm(nobs*nrow(grid), sd = 0.1)
 
-ggplot() +
-  geom_tile(aes(x = coords[,1], y = coords[,2], fill = z[2,])) +
+df <- as.data.frame(z[1:25, ])
+df$Response <- paste0("Row_", 1:25)
+long_df <- pivot_longer(df, cols = -Response, names_to = "point_id", values_to = "Value")
+
+coords_df <- as.data.frame(coords)
+coords_df$point_id <- as.character(1:nrow(coords_df))
+
+plot_df <- left_join(long_df, coords_df, by = "point_id")
+colnames(plot_df)[colnames(plot_df) == "V1"] <- "Longitude"
+colnames(plot_df)[colnames(plot_df) == "V2"] <- "Latitude"
+
+ggplot(plot_df, aes(x = Longitude, y = Latitude, fill = Value)) +
+  geom_tile() +
   scale_fill_viridis_c() +
-  theme_minimal() + 
-  labs(title = "Heatmap based on Longitude and Latitude",
-       x = "Longitude", y = "Latitude", fill = "Value")
+  facet_wrap(~ Response) +
+  theme_void() +
+  theme(
+    strip.text = element_blank(),
+    legend.position = "none"
+  )
+
 
 
 get_info <- function(mat) {

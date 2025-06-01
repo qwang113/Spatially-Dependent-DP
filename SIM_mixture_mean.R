@@ -95,7 +95,7 @@ save_idx <- 0
 
 burn = 0
 thin = 1
-tot_sample = 1000
+tot_sample = 2000
 
 all_theta <- array(NA, dim = c(tot_sample, dim(curr_theta)))
 all_beta = all_nu = all_phi = all_tau = all_sig <- rep(NA, tot_sample)
@@ -183,8 +183,8 @@ while (TRUE) {
 plot_pred <- function(idx){
   
   # Calculate the density of the first row of train_dat
-  real_density_vals <- density(train_dat[idx, ])$y
-  real_density_xvals <- density(train_dat[idx, ])$x
+  real_density_vals <- density(train_dat[, idx])$y
+  real_density_xvals <- density(train_dat[, idx])$x
   
   # Create a data frame for the real density curve
   real_density_df <- data.frame(
@@ -202,8 +202,8 @@ plot_pred <- function(idx){
   # all_theta <- all_theta[500:1000,,]
   # Calculate the density for each row of all_theta and add it to the data frame
   for (i in 100:nrow(all_theta)) {
-    density_vals <- density(all_theta[i, idx, ])$y
-    x_vals <- density(all_theta[i, idx, ])$x
+    density_vals <- density(all_beta[idx] + all_theta[i, ,idx ])$y
+    x_vals <- density(all_beta[idx] + all_theta[i, ,idx ])$x
     
     all_theta_long <- rbind(all_theta_long, data.frame(value = density_vals, type = paste("Estimate ", i), x = x_vals))
   }
